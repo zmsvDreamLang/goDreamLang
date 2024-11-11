@@ -43,6 +43,10 @@ const (
 	TokenTypeSymbolBitNot
 	TokenTypeSymbolBitXor
 	TokenTypeSymbolBitXorNot
+	TokenTypeSymbolLShift
+	TokenTypeSymbolRShift
+	TokenTypeSymbolLArrow
+	TokenTypeSymbolRArrow
 
 	// Symbols
 	TokenTypeSymbolDot
@@ -75,41 +79,57 @@ const (
 	TokenTypeKeywordVal
 	TokenTypeKeywordClass
 	TokenTypeKeywordNew
-	IMPORT
-	FROM
-	FN
-	IF
-	ELSE
-	FOREACH
-	WHILE
-	FOR
-	EXPORT
-	TYPEOF
-	IN
+	TokenTypeKeywordPublic
+	TokenTypeKeywordPrivate
+	TokenTypeKeywordStatic
+	TokenTypeKeywordFinal
+	TokenTypeKeywordAbstract
+	TokenTypeKeywordOverride
+	TokenTypeKeywordImport
+	TokenTypeKeywordFrom
+	TokenTypeKeywordFunc
+	TokenTypeKeywordIf
+	TokenTypeKeywordElse
+	TokenTypeKeywordElseIf
+	TokenTypeKeywordSwitch
+	TokenTypeKeywordCase
+	TokenTypeKeywordDefault
+	TokenTypeKeywordForeach
+	TokenTypeKeywordIn
+	TokenTypeKeywordFor
+	TokenTypeKeywordWhile
+	TokenTypeKeywordExport
 
 	// Misc
 	NUM_TOKENS
 )
 
 var reserved_lu map[string]TokenKind = map[string]TokenKind{
-	"true":    TRUE,
-	"false":   FALSE,
-	"null":    NULL,
-	"let":     LET,
-	"const":   CONST,
-	"class":   CLASS,
-	"new":     NEW,
-	"import":  IMPORT,
-	"from":    FROM,
-	"fn":      FN,
-	"if":      IF,
-	"else":    ELSE,
-	"foreach": FOREACH,
-	"while":   WHILE,
-	"for":     FOR,
-	"export":  EXPORT,
-	"typeof":  TYPEOF,
-	"in":      IN,
+	"var":      TokenTypeKeywordVar,
+	"let":      TokenTypeKeywordLet,
+	"val":      TokenTypeKeywordVal,
+	"class":    TokenTypeKeywordClass,
+	"new":      TokenTypeKeywordNew,
+	"public":   TokenTypeKeywordPublic,
+	"private":  TokenTypeKeywordPrivate,
+	"static":   TokenTypeKeywordStatic,
+	"final":    TokenTypeKeywordFinal,
+	"abstract": TokenTypeKeywordAbstract,
+	"override": TokenTypeKeywordOverride,
+	"import":   TokenTypeKeywordImport,
+	"from":     TokenTypeKeywordFrom,
+	"func":     TokenTypeKeywordFunc,
+	"if":       TokenTypeKeywordIf,
+	"else":     TokenTypeKeywordElse,
+	"elseif":   TokenTypeKeywordElseIf,
+	"switch":   TokenTypeKeywordSwitch,
+	"case":     TokenTypeKeywordCase,
+	"default":  TokenTypeKeywordDefault,
+	"foreach":  TokenTypeKeywordForeach,
+	"in":       TokenTypeKeywordIn,
+	"for":      TokenTypeKeywordFor,
+	"while":    TokenTypeKeywordWhile,
+	"export":   TokenTypeKeywordExport,
 }
 
 type Token struct {
@@ -128,7 +148,7 @@ func (tk Token) IsOneOfMany(expectedTokens ...TokenKind) bool {
 }
 
 func (token Token) Debug() {
-	if token.Kind == IDENTIFIER || token.Kind == NUMBER || token.Kind == STRING {
+	if token.Kind == TokenTypeValIdentifier || token.Kind == TokenTypeValNumber || token.Kind == TokenTypeValString {
 		fmt.Printf("%s(%s)\n", TokenKindString(token.Kind), token.Value)
 	} else {
 		fmt.Printf("%s()\n", TokenKindString(token.Kind))
@@ -144,167 +164,237 @@ func (token Token) Debug() {
 //   - string: 对应于给定 TokenKind 的字符串表示。如果 TokenKind 未知，则返回 "unknown" 加上其数值表示。
 //
 // 支持的 TokenKind 类型及其对应的字符串表示包括但不限于:
-//   - EOF: "eof"
-//   - NULL: "null"
-//   - NUMBER: "number"
-//   - STRING: "string"
-//   - TRUE: "true"
-//   - FALSE: "false"
-//   - IDENTIFIER: "identifier"
-//   - OPEN_BRACKET: "open_bracket"
-//   - CLOSE_BRACKET: "close_bracket"
-//   - OPEN_CURLY: "open_curly"
-//   - CLOSE_CURLY: "close_curly"
-//   - OPEN_PAREN: "open_paren"
-//   - CLOSE_PAREN: "close_paren"
-//   - ASSIGNMENT: "assignment"
-//   - EQUALS: "equals"
-//   - NOT_EQUALS: "not_equals"
-//   - NOT: "not"
-//   - LESS: "less"
-//   - LESS_EQUALS: "less_equals"
-//   - GREATER: "greater"
-//   - GREATER_EQUALS: "greater_equals"
-//   - OR: "or"
-//   - AND: "and"
-//   - DOT: "dot"
-//   - DOT_DOT: "dot_dot"
-//   - SEMI_COLON: "semi_colon"
-//   - COLON: "colon"
-//   - QUESTION: "question"
-//   - COMMA: "comma"
-//   - PLUS_PLUS: "plus_plus"
-//   - MINUS_MINUS: "minus_minus"
-//   - PLUS_EQUALS: "plus_equals"
-//   - MINUS_EQUALS: "minus_equals"
-//   - NULLISH_ASSIGNMENT: "nullish_assignment"
-//   - PLUS: "plus"
-//   - DASH: "dash"
-//   - SLASH: "slash"
-//   - STAR: "star"
-//   - PERCENT: "percent"
-//   - LET: "let"
-//   - CONST: "const"
-//   - CLASS: "class"
-//   - NEW: "new"
-//   - IMPORT: "import"
-//   - FROM: "from"
-//   - FN: "fn"
-//   - IF: "if"
-//   - ELSE: "else"
-//   - FOREACH: "foreach"
-//   - FOR: "for"
-//   - WHILE: "while"
-//   - EXPORT: "export"
-//   - IN: "in"
+//  - TokenTypeEOF: "eof"
+//  - TokenTypeValNull: "null"
+//  - TokenTypeValTrue: "true"
+//  - TokenTypeValFalse: "false"
+//  - TokenTypeValNumber: "number"
+//  - TokenTypeValString: "string"
+//  - TokenTypeValIdentifier: "identifier"
+//  - TokenTypeSymbolLBracket: "["
+//  - TokenTypeSymbolRBracket: "]"
+//  - TokenTypeSymbolLBrance: "{"
+//  - TokenTypeSymbolRBrance: "}"
+//  - TokenTypeSymbolLParen: "("
+//  - TokenTypeSymbolRParen: ")"
+//  - TokenTypeSymbolAssignment: "="
+//  - TokenTypeSymbolEqual: "=="
+//  - TokenTypeSymbolNotEqual: "!="
+//  - TokenTypeSymbolLT: "<"
+//  - TokenTypeSymbolLTEQ: "<="
+//  - TokenTypeSymbolGT: ">"
+//  - TokenTypeSymbolGTEQ: ">="
+//  - TokenTypeSymbolOr: "||"
+//  - TokenTypeSymbolAnd: "&&"
+//  - TokenTypeSymbolNot: "!"
+//  - TokenTypeSymbolXor: "^^"
+//  - TokenTypeSymbolXorNot: "^!"
+//  - TokenTypeSymbolBitOr: "|"
+//  - TokenTypeSymbolBitAnd: "&"
+//  - TokenTypeSymbolBitNot: "~"
+//  - TokenTypeSymbolBitXor: "^"
+//  - TokenTypeSymbolBitXorNot: "^~"
+//  - TokenTypeSymbolLShift: "<<"
+//  - TokenTypeSymbolRShift: ">>"
+//  - TokenTypeSymbolLArrow: "<-"
+//  - TokenTypeSymbolRArrow: "->"
+//  - TokenTypeSymbolDot: "."
+//  - TokenTypeSymbolConcat: ".."
+//  - TokenTypeSymbolVarargs: "..."
+//  - TokenTypeSymbolSemiColon: ";"
+//  - TokenTypeSymbolColon: ":"
+//  - TokenTypeSymbolQuestion: "?"
+//  - TokenTypeSymbolComma: ","
+//  - TokenTypeSymbolPlusPlus: "++"
+//  - TokenTypeSymbolMinusMinus: "--"
+//  - TokenTypeSymbolPlusEqual: "+="
+//  - TokenTypeSymbolDashEqual: "-="
+//  - TokenTypeSymbolStarEqual: "*="
+//  - TokenTypeSymbolSlashEqual: "/="
+//  - TokenTypeSymbolPercentEqual: "%="
+//  - TokenTypeSymbolPlus: "+"
+//  - TokenTypeSymbolDash: "-"
+//  - TokenTypeSymbolStar: "*"
+//  - TokenTypeSymbolSlash: "/"
+//  - TokenTypeSymbolPercent: "%"
+//  - TokenTypeKeywordVar: "var"
+//  - TokenTypeKeywordLet: "let"
+//  - TokenTypeKeywordVal: "val"
+//  - TokenTypeKeywordClass: "class"
+//  - TokenTypeKeywordNew: "new"
+//  - TokenTypeKeywordImport: "import"
+//  - TokenTypeKeywordFrom: "from"
+//  - TokenTypeKeywordFunc: "func"
+//  - TokenTypeKeywordIf: "if"
+//  - TokenTypeKeywordElse: "else"
+//  - TokenTypeKeywordElseIf: "elseif"
+//  - TokenTypeKeywordSwitch: "switch"
+//  - TokenTypeKeywordCase: "case"
+//  - TokenTypeKeywordDefault: "default"
+//  - TokenTypeKeywordForeach: "foreach"
+//  - TokenTypeKeywordFor: "for"
+//  - TokenTypeKeywordWhile: "while"
+//  - TokenTypeKeywordExport: "export"
+//  - TokenTypeKeywordIn: "in"
+
 func TokenKindString(kind TokenKind) string {
 	switch kind {
-	case EOF:
+	case TokenTypeEOF:
 		return "eof"
-	case NULL:
+	case TokenTypeValNull:
 		return "null"
-	case NUMBER:
-		return "number"
-	case STRING:
-		return "string"
-	case TRUE:
+	case TokenTypeValTrue:
 		return "true"
-	case FALSE:
+	case TokenTypeValFalse:
 		return "false"
-	case IDENTIFIER:
+	case TokenTypeValNumber:
+		return "number"
+	case TokenTypeValString:
+		return "string"
+	case TokenTypeValIdentifier:
 		return "identifier"
-	case OPEN_BRACKET:
-		return "open_bracket"
-	case CLOSE_BRACKET:
-		return "close_bracket"
-	case OPEN_CURLY:
-		return "open_curly"
-	case CLOSE_CURLY:
-		return "close_curly"
-	case OPEN_PAREN:
-		return "open_paren"
-	case CLOSE_PAREN:
-		return "close_paren"
-	case ASSIGNMENT:
-		return "assignment"
-	case EQUALS:
-		return "equals"
-	case NOT_EQUALS:
-		return "not_equals"
-	case NOT:
-		return "not"
-	case LESS:
-		return "less"
-	case LESS_EQUALS:
-		return "less_equals"
-	case GREATER:
-		return "greater"
-	case GREATER_EQUALS:
-		return "greater_equals"
-	case OR:
-		return "or"
-	case AND:
-		return "and"
-	case DOT:
-		return "dot"
-	case DOT_DOT:
-		return "dot_dot"
-	case SEMI_COLON:
-		return "semi_colon"
-	case COLON:
-		return "colon"
-	case QUESTION:
-		return "question"
-	case COMMA:
-		return "comma"
-	case PLUS_PLUS:
-		return "plus_plus"
-	case MINUS_MINUS:
-		return "minus_minus"
-	case PLUS_EQUALS:
-		return "plus_equals"
-	case MINUS_EQUALS:
-		return "minus_equals"
-	case NULLISH_ASSIGNMENT:
-		return "nullish_assignment"
-	case PLUS:
-		return "plus"
-	case DASH:
-		return "dash"
-	case SLASH:
-		return "slash"
-	case STAR:
-		return "star"
-	case PERCENT:
-		return "percent"
-	case LET:
+	case TokenTypeSymbolLBracket:
+		return "["
+	case TokenTypeSymbolRBracket:
+		return "]"
+	case TokenTypeSymbolLBrance:
+		return "{"
+	case TokenTypeSymbolRBrance:
+		return "}"
+	case TokenTypeSymbolLParen:
+		return "("
+	case TokenTypeSymbolRParen:
+		return ")"
+	case TokenTypeSymbolAssignment:
+		return "="
+	case TokenTypeSymbolEqual:
+		return "=="
+	case TokenTypeSymbolNotEqual:
+		return "!="
+	case TokenTypeSymbolLT:
+		return "<"
+	case TokenTypeSymbolLTEQ:
+		return "<="
+	case TokenTypeSymbolGT:
+		return ">"
+	case TokenTypeSymbolGTEQ:
+		return ">="
+	case TokenTypeSymbolOr:
+		return "||"
+	case TokenTypeSymbolAnd:
+		return "&&"
+	case TokenTypeSymbolNot:
+		return "!"
+	case TokenTypeSymbolXor:
+		return "^^"
+	case TokenTypeSymbolXorNot:
+		return "^!"
+	case TokenTypeSymbolBitOr:
+		return "|"
+	case TokenTypeSymbolBitAnd:
+		return "&"
+	case TokenTypeSymbolBitNot:
+		return "~"
+	case TokenTypeSymbolBitXor:
+		return "^"
+	case TokenTypeSymbolBitXorNot:
+		return "^~"
+	case TokenTypeSymbolLShift:
+		return "<<"
+	case TokenTypeSymbolRShift:
+		return ">>"
+	case TokenTypeSymbolLArrow:
+		return "<-"
+	case TokenTypeSymbolRArrow:
+		return "->"
+	case TokenTypeSymbolDot:
+		return "."
+	case TokenTypeSymbolConcat:
+		return ".."
+	case TokenTypeSymbolVarargs:
+		return "..."
+	case TokenTypeSymbolSemiColon:
+		return ";"
+	case TokenTypeSymbolColon:
+		return ":"
+	case TokenTypeSymbolQuestion:
+		return "?"
+	case TokenTypeSymbolComma:
+		return ","
+	case TokenTypeSymbolPlusPlus:
+		return "++"
+	case TokenTypeSymbolMinusMinus:
+		return "--"
+	case TokenTypeSymbolPlusEqual:
+		return "+="
+	case TokenTypeSymbolDashEqual:
+		return "-="
+	case TokenTypeSymbolStarEqual:
+		return "*="
+	case TokenTypeSymbolSlashEqual:
+		return "/="
+	case TokenTypeSymbolPercentEqual:
+		return "%="
+	case TokenTypeSymbolPlus:
+		return "+"
+	case TokenTypeSymbolDash:
+		return "-"
+	case TokenTypeSymbolStar:
+		return "*"
+	case TokenTypeSymbolSlash:
+		return "/"
+	case TokenTypeSymbolPercent:
+		return "%"
+	case TokenTypeKeywordVar:
+		return "var"
+	case TokenTypeKeywordLet:
 		return "let"
-	case CONST:
-		return "const"
-	case CLASS:
+	case TokenTypeKeywordVal:
+		return "val"
+	case TokenTypeKeywordClass:
 		return "class"
-	case NEW:
+	case TokenTypeKeywordNew:
 		return "new"
-	case IMPORT:
+	case TokenTypeKeywordPublic:
+		return "public"
+	case TokenTypeKeywordPrivate:
+		return "private"
+	case TokenTypeKeywordStatic:
+		return "static"
+	case TokenTypeKeywordFinal:
+		return "final"
+	case TokenTypeKeywordAbstract:
+		return "abstract"
+	case TokenTypeKeywordOverride:
+		return "override"
+	case TokenTypeKeywordImport:
 		return "import"
-	case FROM:
+	case TokenTypeKeywordFrom:
 		return "from"
-	case FN:
-		return "fn"
-	case IF:
+	case TokenTypeKeywordFunc:
+		return "func"
+	case TokenTypeKeywordIf:
 		return "if"
-	case ELSE:
+	case TokenTypeKeywordElse:
 		return "else"
-	case FOREACH:
+	case TokenTypeKeywordElseIf:
+		return "elseif"
+	case TokenTypeKeywordSwitch:
+		return "switch"
+	case TokenTypeKeywordCase:
+		return "case"
+	case TokenTypeKeywordDefault:
+		return "default"
+	case TokenTypeKeywordForeach:
 		return "foreach"
-	case FOR:
-		return "for"
-	case WHILE:
-		return "while"
-	case EXPORT:
-		return "export"
-	case IN:
+	case TokenTypeKeywordIn:
 		return "in"
+	case TokenTypeKeywordFor:
+		return "for"
+	case TokenTypeKeywordWhile:
+		return "while"
+	case TokenTypeKeywordExport:
+		return "export"
 	default:
 		return fmt.Sprintf("unknown(%d)", kind)
 	}

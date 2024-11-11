@@ -2,188 +2,162 @@ package lexer
 
 import (
 	"fmt"
-	"regexp"
+	"strings"
+	"unicode"
 )
 
-type regexPattern struct {
-	regex   *regexp.Regexp
-	handler regexHandler
+var (
+	hexChar      = make(map[byte]bool)
+	specialChar  = make(map[byte]bool)
+	reservedChar = make(map[byte]bool)
+)
+
+func init() {
+	for i := '0'; i <= '9'; i++ {
+		hexChar[byte(i)] = true
+	}
+	for i := 'a'; i <= 'f'; i++ {
+		hexChar[byte(i)] = true
+	}
+	for i := 'A'; i <= 'F'; i++ {
+		hexChar[byte(i)] = true
+	}
+
+	specialChars := "+-*/^%<>=!&|()[]{}.,;:\n\"'`"
+	for i := 0; i < len(specialChars); i++ {
+		specialChar[specialChars[i]] = true
+	}
+
+	reservedChars := "#@$"
+	for i := 0; i < len(reservedChars); i++ {
+		reservedChar[reservedChars[i]] = true
+	}
 }
 
-type lexer struct {
-	patterns []regexPattern
-	Tokens   []Token
-	source   string
-	pos      int
-	line     int
+type Lexer struct {
+	input []byte
+	index int
+	line  int
 }
 
-func Tokenize(source string) []Token {
-	lex := createLexer(source)
+func isWhitespace(ch rune) bool {
+	return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r'
+}
 
-	for !lex.at_eof() {
-		matched := false
+func isDigit(ch rune) bool {
+	return ch >= '0' && ch <= '9'
+}
 
-		for _, pattern := range lex.patterns {
-			loc := pattern.regex.FindStringIndex(lex.remainder())
-			if loc != nil && loc[0] == 0 {
-				pattern.handler(lex, pattern.regex)
-				matched = true
-				break // Exit the loop after the first match
-			}
+func isLetter(ch rune) bool {
+	return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_'
+}
+
+func NewLexer(input string) *Lexer {
+	return &Lexer{
+		input: []byte(input),
+		index: 0,
+		line:  1,
+	}
+}
+
+func (l *Lexer) nextChar() *byte {
+	if l.index+1 < len(l.input) {
+		return &l.input[l.index+1]
+	}
+	return nil
+}
+
+func (l *Lexer) checkNumber(i int) (string, error) {
+	isHex := false
+	isBin := false
+	isOct := false
+	isE := false
+	isDec := false
+	dot := 0
+	var sb strings.Builder
+	c := l.input[i]
+	if c == '-' {
+		sb.WriteByte(c)
+		i++
+	} else if !unicode.IsDigit(rune(c)) {
+		return "", fmt.Errorf("not number at line %d", l.line)
+	}
+	sb.WriteByte(c)
+	i++
+	for i < len(l.input) && !(unicode.IsSpace(rune(l.input[i])) || specialChar[l.input[i]]) {
+		c = l.input[i]
+		if unicode.IsDigit(rune(c)) {
+			sb.WriteByte(c)
+		} else if c == '.' && dot == 0 {
+			sb.WriteByte(c)
+			dot++
+		} else if c == 'x' && sb.Len() == 1 && sb.String()[0] == '0' {
+			sb.WriteByte(c)
+			isHex = true
+		} else if c == 'b' && sb.Len() == 1 && sb.String()[0] == '0' {
+			sb.WriteByte(c)
+			isBin = true
+		} else if c == 'd' && sb.Len() == 1 && sb.String()[0] == '0' {
+			sb.WriteByte(c)
+			isDec = true
+		} else if c != 'b' && c != 'd' && sb.Len() == 1 && sb.String()[0] == '0' {
+			sb.WriteByte(c)
+			isOct = true
+		} else if !isE && (c == 'e' || c == 'E') {
+			sb.WriteByte(c)
+			isE = true
+		} else if isHex && hexChar[c] {
+			sb.WriteByte(c)
+		} else if isBin && (c == '0' || c == '1') {
+			sb.WriteByte(c)
+		} else if isOct && (c >= '0' && c <= '7') {
+			sb.WriteByte(c)
+		} else if isDec && (c >= '0' && c <= '9') {
+			sb.WriteByte(c)
+		} else {
+			return "", fmt.Errorf("wrong number token at line %d", l.line)
 		}
-
-		if !matched {
-			panic(fmt.Sprintf("lexer error: unrecognized token near '%v'", lex.remainder()))
-		}
+		i++
 	}
-
-	lex.push(newUniqueToken(EOF, "EOF"))
-	return lex.Tokens
+	return sb.String(), nil
 }
 
-func (lex *lexer) advanceN(n int) {
-	lex.pos += n
-}
-
-func (lex *lexer) at() byte {
-	return lex.source[lex.pos]
-}
-
-func (lex *lexer) advance() {
-	lex.pos += 1
-}
-
-func (lex *lexer) remainder() string {
-	return lex.source[lex.pos:]
-}
-
-func (lex *lexer) push(token Token) {
-	lex.Tokens = append(lex.Tokens, token)
-}
-
-func (lex *lexer) at_eof() bool {
-	return lex.pos >= len(lex.source)
-}
-
-// createLexer 创建一个新的词法分析器实例。
-// 它接受一个源代码字符串，并返回一个指向词法分析器的指针。
-// 词法分析器用于将源代码分解成一系列的标记（Tokens）。
-//
-// 参数:
-// - source: 源代码字符串。
-//
-// 返回值:
-// - *lexer: 一个指向词法分析器的指针。
-//
-// 词法分析器初始化时包含以下属性:
-// - pos: 当前解析位置，初始值为0。
-// - line: 当前行号，初始值为1。
-// - source: 源代码字符串。
-// - Tokens: 存储解析后的标记的切片，初始为空切片。
-// - patterns: 一组正则表达式模式及其对应的处理函数，用于匹配和处理不同类型的标记。
-//
-// patterns 包含以下正则表达式及其处理函数:
-// - `\s+`: 匹配空白字符，由 skipHandler 处理。
-// - `\/\/.*`: 匹配单行注释，由 commentHandler 处理。
-// - `"[^"]*"`: 匹配字符串，由 stringHandler 处理。
-// - `[0-9]+(\.[0-9]+)?`: 匹配数字，由 numberHandler 处理。
-// - `[a-zA-Z_][a-zA-Z0-9_]*`: 匹配符号，由 symbolHandler 处理。
-// - 其他模式匹配各种运算符和标点符号，由 defaultHandler 处理。
-func createLexer(source string) *lexer {
-	return &lexer{
-		pos:    0,
-		line:   1,
-		source: source,
-		Tokens: make([]Token, 0),
-		patterns: []regexPattern{
-			{regexp.MustCompile(`\s+`), skipHandler},
-			{regexp.MustCompile(`\/\/.*`), commentHandler},
-			{regexp.MustCompile(`"[^"]*"`), stringHandler},
-			{regexp.MustCompile(`[0-9]+(\.[0-9]+)?`), numberHandler},
-			{regexp.MustCompile(`[a-zA-Z_][a-zA-Z0-9_]*`), symbolHandler},
-			{regexp.MustCompile(`\[`), defaultHandler(OPEN_BRACKET, "[")},
-			{regexp.MustCompile(`\]`), defaultHandler(CLOSE_BRACKET, "]")},
-			{regexp.MustCompile(`\{`), defaultHandler(OPEN_CURLY, "{")},
-			{regexp.MustCompile(`\}`), defaultHandler(CLOSE_CURLY, "}")},
-			{regexp.MustCompile(`\(`), defaultHandler(OPEN_PAREN, "(")},
-			{regexp.MustCompile(`\)`), defaultHandler(CLOSE_PAREN, ")")},
-			{regexp.MustCompile(`==`), defaultHandler(EQUALS, "==")},
-			{regexp.MustCompile(`!=`), defaultHandler(NOT_EQUALS, "!=")},
-			{regexp.MustCompile(`=`), defaultHandler(ASSIGNMENT, "=")},
-			{regexp.MustCompile(`!`), defaultHandler(NOT, "!")},
-			{regexp.MustCompile(`<=`), defaultHandler(LESS_EQUALS, "<=")},
-			{regexp.MustCompile(`<`), defaultHandler(LESS, "<")},
-			{regexp.MustCompile(`>=`), defaultHandler(GREATER_EQUALS, ">=")},
-			{regexp.MustCompile(`>`), defaultHandler(GREATER, ">")},
-			{regexp.MustCompile(`\|\|`), defaultHandler(OR, "||")},
-			{regexp.MustCompile(`&&`), defaultHandler(AND, "&&")},
-			{regexp.MustCompile(`\.\.`), defaultHandler(DOT_DOT, "..")},
-			{regexp.MustCompile(`\.`), defaultHandler(DOT, ".")},
-			{regexp.MustCompile(`;`), defaultHandler(SEMI_COLON, ";")},
-			{regexp.MustCompile(`:`), defaultHandler(COLON, ":")},
-			{regexp.MustCompile(`\?\?=`), defaultHandler(NULLISH_ASSIGNMENT, "??=")},
-			{regexp.MustCompile(`\?`), defaultHandler(QUESTION, "?")},
-			{regexp.MustCompile(`,`), defaultHandler(COMMA, ",")},
-			{regexp.MustCompile(`\+\+`), defaultHandler(PLUS_PLUS, "++")},
-			{regexp.MustCompile(`--`), defaultHandler(MINUS_MINUS, "--")},
-			{regexp.MustCompile(`\+=`), defaultHandler(PLUS_EQUALS, "+=")},
-			{regexp.MustCompile(`-=`), defaultHandler(MINUS_EQUALS, "-=")},
-			{regexp.MustCompile(`\+`), defaultHandler(PLUS, "+")},
-			{regexp.MustCompile(`-`), defaultHandler(DASH, "-")},
-			{regexp.MustCompile(`/`), defaultHandler(SLASH, "/")},
-			{regexp.MustCompile(`\*`), defaultHandler(STAR, "*")},
-			{regexp.MustCompile(`%`), defaultHandler(PERCENT, "%")},
-		},
+func (l *Lexer) checkIdent(i int) (string, error) {
+	var sb strings.Builder
+	c := l.input[i]
+	if reservedChar[c] {
+		return "", fmt.Errorf("syntax error at line %d", l.line)
 	}
-}
-
-type regexHandler func(lex *lexer, regex *regexp.Regexp)
-
-// Created a default handler which will simply create a token with the matched contents. This handler is used with most simple tokens.
-func defaultHandler(kind TokenKind, value string) regexHandler {
-	return func(lex *lexer, _ *regexp.Regexp) {
-		lex.advanceN(len(value))
-		lex.push(newUniqueToken(kind, value))
+	sb.WriteByte(c)
+	i++
+	for i < len(l.input) && !(unicode.IsSpace(rune(l.input[i])) || specialChar[l.input[i]]) {
+		c = l.input[i]
+		sb.WriteByte(c)
+		i++
 	}
+	return sb.String(), nil
 }
 
-func stringHandler(lex *lexer, regex *regexp.Regexp) {
-	match := regex.FindStringIndex(lex.remainder())
-	stringLiteral := lex.remainder()[match[0]:match[1]]
-
-	lex.push(newUniqueToken(STRING, stringLiteral))
-	lex.advanceN(len(stringLiteral))
-}
-
-func numberHandler(lex *lexer, regex *regexp.Regexp) {
-	match := regex.FindString(lex.remainder())
-	lex.push(newUniqueToken(NUMBER, match))
-	lex.advanceN(len(match))
-}
-
-func symbolHandler(lex *lexer, regex *regexp.Regexp) {
-	match := regex.FindString(lex.remainder())
-
-	if kind, found := reserved_lu[match]; found {
-		lex.push(newUniqueToken(kind, match))
+func (l *Lexer) checkExgesis(i int) string {
+	var sb strings.Builder
+	isMoreEx := false
+	if i+1 < len(l.input) && l.input[i+1] == '*' && l.input[i] == '/' {
+		isMoreEx = true
+		sb.WriteString("/*")
 	} else {
-		lex.push(newUniqueToken(IDENTIFIER, match))
+		sb.WriteString("//")
 	}
-
-	lex.advanceN(len(match))
-}
-
-func skipHandler(lex *lexer, regex *regexp.Regexp) {
-	match := regex.FindStringIndex(lex.remainder())
-	lex.advanceN(match[1])
-}
-
-func commentHandler(lex *lexer, regex *regexp.Regexp) {
-	match := regex.FindStringIndex(lex.remainder())
-	if match != nil {
-		// Advance past the entire comment.
-		lex.advanceN(match[1])
-		lex.line++
+	i += 2
+	for i < len(l.input) {
+		c := l.input[i]
+		if c == '\n' && !isMoreEx {
+			break
+		} else if isMoreEx && i+1 < len(l.input) && c == '*' && l.input[i+1] == '/' {
+			sb.WriteString("*/")
+			break
+		}
+		sb.WriteByte(c)
+		i++
 	}
+	return sb.String()
 }
